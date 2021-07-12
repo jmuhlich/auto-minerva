@@ -46,20 +46,24 @@ for simg, hue in zip(scaled, hues):
         cimg[..., 1] = C * np.cos(h)  # a
         cimg[..., 2] = C * np.sin(h)  # b
     img_xyz += colour.Oklab_to_XYZ(cimg)
-out_img = np.clip(colour.XYZ_to_sRGB(img_xyz), 0, 1)
+out_okimg = np.clip(colour.XYZ_to_sRGB(img_xyz), 0, 1)
 
-#out_img = np.zeros((3,) + out_shape, np.float32)
-# out_img += scaled[0][None, ...]
-# out_img[0] += scaled[1]
-# out_img[1] += scaled[2]
-# out_img[2] += scaled[3]
-# out_img = np.clip(out_img, 0, 65535).astype(np.uint16)
-# out_img = skimage.exposure.adjust_gamma(out_img, 1/2.2)
+out_img = np.zeros(out_shape + (3,), np.float32)
+out_img += scaled[0][..., None]
+out_img[..., 0] += scaled[1]
+out_img[..., 1] += scaled[2]
+out_img[..., 2] += scaled[3]
+out_img = np.clip(out_img, 0, 65535).astype(np.uint16)
 
-fig, axs = plt.subplots(2, 2, sharex=True, sharey=True)
-axs = axs.ravel()
-axs[0].imshow(skimage.img_as_ubyte(out_img))
-for ax, s in zip(axs[1:], scaled[1:]):
+fig, (img_axs, ch_axs) = plt.subplots(2, 3, sharex=True, sharey=True)
+img_axs[0].imshow(skimage.img_as_ubyte(out_img))
+img_axs[0].set_title('RGB')
+img_axs[1].imshow(skimage.img_as_ubyte(skimage.exposure.adjust_gamma(out_img, 1/2.2)))
+img_axs[1].set_title('RGB (gamma encoded)')
+img_axs[2].imshow(out_okimg)
+img_axs[2].set_title('OKlab')
+for ax, s, cname in zip(ch_axs, scaled[1:], ('Red', 'Green', 'Blue')):
     s = skimage.exposure.adjust_gamma(s, 1/2.2)
     ax.imshow(s, vmin=0, vmax=65535, cmap='gray')
+    ax.set_title(f"{cname} channel")
 fig.show()
