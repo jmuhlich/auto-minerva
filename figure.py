@@ -1,13 +1,12 @@
 import matplotlib.pyplot as plt
-import napari
 import numpy as np
-import qtpy.QtCore
 import scipy.stats
 import sklearn.mixture
 import sys
 import tifffile
 import tqdm
 import zarr
+
 
 path = sys.argv[1]
 tiff = tifffile.TiffFile(path, is_ome=False)
@@ -18,12 +17,15 @@ assert zarray.ndim == 3
 
 plt.figure(figsize=(15, 7))
 ni = zarray.shape[0]
+ss = max(zarray.shape[1], zarray.shape[2]) // 200
+sampled_pixels = zarray.shape[1] // ss * zarray.shape[2] // ss
+print(f"Sampling every {ss} pixels -- total pixel count is {sampled_pixels}")
 
-#for i in range(ni):
-ni = 16
-for i in tqdm.tqdm(range(0, 16)):
+ni = min(ni, 16)
 
-    zimg = zarray[i, ::20,::20]
+for i in tqdm.tqdm(range(ni)):
+
+    zimg = zarray[i, ::ss, ::ss]
     zimg_log = np.log(zimg[zimg>0])
 
     ax = plt.subplot(ni, 3, i * 3 + 1)
@@ -36,20 +38,21 @@ for i in tqdm.tqdm(range(0, 16)):
     if i < ni - 1:
         ax.xaxis.set_ticks([])
     ax.yaxis.set_ticks([])
-    ax.hist(zimg_log, bins=np.linspace(3, np.log(65535), 200), density=True, color='silver', histtype='stepfilled')
+    ax.hist(zimg_log, bins=np.linspace(0, np.log(65535), 200), density=True, color='silver', histtype='stepfilled')
 
     ax = plt.subplot(ni, 3, i * 3 + 3)
     if i < ni - 1:
         ax.xaxis.set_ticks([])
     ax.yaxis.set_ticks([])
-    ax.hist(zimg_log, bins=np.linspace(3, np.log(65535), 200), density=True, color='silver', histtype='stepfilled')
-    iinfo = np.iinfo(zimg.dtype)
+    ax.hist(zimg_log, bins=np.linspace(0, np.log(65535), 200), density=True, color='silver', histtype='stepfilled')
     gmm = sklearn.mixture.GaussianMixture(3, max_iter=1000, tol=1e-6)
     gmm.fit(zimg_log.reshape((-1,1)))
-    a = np.argmax(gmm.means_)
-    vmin, vmax = np.round(np.exp(gmm.means_[a] + (gmm.covariances_[a] ** 0.5 * [-2,2]))).astype(int).squeeze()
-    vmin = max(vmin, iinfo.min)
-    vmax = min(vmax, iinfo.max)
+    ci = np.argsort(gmm.means_.squeeze())[-2:]
+    vmin, vmax = np.round(np.exp(gmm.means_[ci, 0] + (gmm.covariances_[ci, 0, 0] ** 0.5 * 2))).astype(int)
+    if vmin >= vmax:
+        vmin = np.round(np.exp(gmm.means_[ci[1], 0] + (gmm.covariances_[ci[1], 0, 0] ** 0.5 * -2))).astype(int)
+    vmin = max(vmin, zimg.min())
+    vmax = min(vmax, zimg.max())
     x = np.linspace(*ax.get_xlim(), 200)
     order = np.argsort(gmm.means_.squeeze())
     for idx in order:
@@ -62,7 +65,7 @@ for i in tqdm.tqdm(range(0, 16)):
     for v in vmin, vmax:
         ax.axvline(np.log(v), c='tab:green', ls=':')
     ax.plot(x, np.exp(gmm.score_samples(x.reshape((-1,1)))), color="black", ls="--")
-    ax.set_xlim(2.5954830184973177, 11.49485661155633)
+    ax.set_xlim(0, np.log(65535))
 
 plt.tight_layout()
 plt.show()
