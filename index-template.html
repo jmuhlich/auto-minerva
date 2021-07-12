@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en-US">
+
+    <head>
+        <meta charset='utf-8'>
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+    </head>
+
+    <body>
+        <div id="minerva-browser"></div>
+        <script defer src="https://use.fontawesome.com/releases/v5.2.0/js/all.js" integrity="sha384-4oV5EgaV02iISL2ban6c/RmotsABqE4yZxZLcYMAdG7FAPsyHYAPpywE9PJo+Khy" crossorigin="anonymous"></script>
+        <script src="https://cdn.jsdelivr.net/npm/minerva-browser@2.15.6/build/bundle.js"></script>
+        <script>
+         window.viewer = MinervaStory.default.build_page({
+             homeUrl: ".",
+             exhibit: "exhibit.json",
+             id: "minerva-browser",
+             embedded: true
+         });
+        </script>
+    </body>
+
+</html>
