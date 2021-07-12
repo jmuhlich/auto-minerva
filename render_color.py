@@ -1,3 +1,4 @@
+import colour
 import matplotlib.pyplot as plt
 import numpy as np
 import skimage.exposure
@@ -32,17 +33,32 @@ scaled = [
 ]
 
 out_shape = tuple(np.ceil(np.divide(zarray.shape[1:], ss)).astype(int))
-out_img = np.zeros((3,) + out_shape, np.float32)
-out_img += scaled[0][None, ...] / 2
-out_img[0] += scaled[1]
-out_img[1] += scaled[2]
-out_img[2] += scaled[3]
-out_img = np.clip(out_img, 0, 65535).astype(np.uint16)
-out_img = skimage.exposure.adjust_gamma(out_img, 1/2.2)
+
+img_xyz = np.zeros(out_shape + (3,), dtype=float)
+L_max = 0.9
+C = 0.17
+hues = (None, 20, 140, 260)
+for simg, hue in zip(scaled, hues):
+    cimg = np.zeros_like(img_xyz)
+    cimg[..., 0] = skimage.img_as_float(simg) * L_max  # L
+    if hue is not None:
+        h = np.deg2rad(hue)
+        cimg[..., 1] = C * np.cos(h)  # a
+        cimg[..., 2] = C * np.sin(h)  # b
+    img_xyz += colour.Oklab_to_XYZ(cimg)
+out_img = np.clip(colour.XYZ_to_sRGB(img_xyz), 0, 1)
+
+#out_img = np.zeros((3,) + out_shape, np.float32)
+# out_img += scaled[0][None, ...]
+# out_img[0] += scaled[1]
+# out_img[1] += scaled[2]
+# out_img[2] += scaled[3]
+# out_img = np.clip(out_img, 0, 65535).astype(np.uint16)
+# out_img = skimage.exposure.adjust_gamma(out_img, 1/2.2)
 
 fig, axs = plt.subplots(2, 2, sharex=True, sharey=True)
 axs = axs.ravel()
-axs[0].imshow(skimage.img_as_ubyte(out_img).transpose((1, 2, 0)))
+axs[0].imshow(skimage.img_as_ubyte(out_img))
 for ax, s in zip(axs[1:], scaled[1:]):
     s = skimage.exposure.adjust_gamma(s, 1/2.2)
     ax.imshow(s, vmin=0, vmax=65535, cmap='gray')
