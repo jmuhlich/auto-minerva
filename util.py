@@ -19,11 +19,11 @@ def auto_threshold(img):
     def fromlog(a):
         return np.round(np.exp(a)).astype(int)
 
-    vmin, vmax = fromlog(means[[i1, i2]] + covars[[i1, i2]] ** 0.5 * 2)
-    if vmin >= vmax:
-        vmin = fromlog(means[i2] + covars[i2] ** 0.5 * -2)
-    vmin = max(vmin, img.min())
-    vmax = min(vmax, img.max())
+    vmin, vmax = means[[i1, i2]] + covars[[i1, i2]] ** 0.5 * 2
+    if vmin >= means[i2]:
+        vmin = means[i2] + covars[i2] ** 0.5 * -1
+    vmin = max(fromlog(vmin), img.min())
+    vmax = min(fromlog(vmax), img.max())
 
     return vmin, vmax
 

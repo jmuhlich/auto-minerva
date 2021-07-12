@@ -49,8 +49,8 @@ for i in tqdm.tqdm(range(ni)):
     gmm.fit(zimg_log.reshape((-1,1)))
     ci = np.argsort(gmm.means_.squeeze())[-2:]
     vmin, vmax = np.round(np.exp(gmm.means_[ci, 0] + (gmm.covariances_[ci, 0, 0] ** 0.5 * 2))).astype(int)
-    if vmin >= vmax:
-        vmin = np.round(np.exp(gmm.means_[ci[1], 0] + (gmm.covariances_[ci[1], 0, 0] ** 0.5 * -2))).astype(int)
+    if vmin >= np.exp(gmm.means_[ci[1], 0]):
+        vmin = np.round(np.exp(gmm.means_[ci[1], 0] + (gmm.covariances_[ci[1], 0, 0] ** 0.5 * -1))).astype(int)
     vmin = max(vmin, zimg.min())
     vmax = min(vmax, zimg.max())
     x = np.linspace(*ax.get_xlim(), 200)
