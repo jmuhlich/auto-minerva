@@ -3,6 +3,7 @@ import numpy as np
 import ome_types
 import sklearn.mixture
 import sys
+import threadpoolctl
 import tifffile
 import zarr
 
@@ -33,6 +34,8 @@ def auto_threshold(img):
 
 
 def main():
+
+    threadpoolctl.threadpool_limits(1)
 
     if len(sys.argv) != 2:
         print("Usage: story.py image.ome.tif")
