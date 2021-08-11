@@ -36,8 +36,9 @@ out_shape = tuple(np.ceil(np.divide(zarray.shape[1:], ss)).astype(int))
 
 img_xyz = np.zeros(out_shape + (3,), dtype=float)
 L_max = 0.9
-C = 0.17
-hues = (None, 20, 140, 260)
+C = 0.2
+#hues = (None, 61, 140, 260)
+hues = (None, 40, 140, 260)
 for simg, hue in zip(scaled, hues):
     cimg = np.zeros_like(img_xyz)
     cimg[..., 0] = skimage.img_as_float(simg) * L_max  # L
@@ -67,3 +68,5 @@ for ax, s, cname in zip(ch_axs, scaled[1:], ('Red', 'Green', 'Blue')):
     ax.imshow(s, vmin=0, vmax=65535, cmap='gray')
     ax.set_title(f"{cname} channel")
 fig.show()
+
+plt.show()
