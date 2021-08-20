@@ -12,8 +12,10 @@ def auto_threshold(img):
 
     assert img.ndim == 2
 
-    ss = max(*img.shape) // 200
-    img = img[::ss, ::ss]
+    yi, xi = np.floor(np.linspace(0, img.shape, 200, endpoint=False)).astype(int).T
+    # Slice one dimension at a time. Should generally use less memory than a meshgrid.
+    img = img[yi]
+    img = img[:, xi]
     img_log = np.log(img[img > 0])
     gmm = sklearn.mixture.GaussianMixture(3, max_iter=1000, tol=1e-6)
     gmm.fit(img_log.reshape((-1,1)))
@@ -45,17 +47,24 @@ def main():
 
     sys.stderr.write(f"opening image: {path}\n")
     tiff = tifffile.TiffFile(path)
-    zarray = zarr.open(tiff.series[0].levels[-1].aszarr())
-    if zarray.ndim == 2:
+    ndim = tiff.series[0].ndim
+    dtype = tiff.series[0].dtype
+    if ndim == 2:
         # FIXME This can be handled easily (promote to 3D array), we just need a
         # test file to make sure we're doing it right.
-        raise Exception("Can't handle 2-dimensional images")
-    elif zarray.ndim == 3:
+        raise Exception("Can't handle 2-dimensional images (yet)")
+    elif ndim == 3:
         pass
     else:
-        raise Exception(f"Can't handle {zarray.ndim}-dimensional images")
-    if not np.issubdtype(zarray.dtype, np.unsignedinteger):
-        raise Exception(f"Can't handle {zarray.dtype} pixel type")
+        raise Exception(f"Can't handle {ndim}-dimensional images")
+    if not np.issubdtype(dtype, np.unsignedinteger):
+        raise Exception(f"Can't handle {dtype} pixel type")
+    # Get smallest pyramid level that's at least 200 in both dimensions.
+    level_series = next(
+        level for level in reversed(tiff.series[0].levels)
+        if all(d >= 200 for d in level.shape[1:])
+    )
+    zarray = zarr.open(level_series.aszarr())
 
     sys.stderr.write(f"reading metadata\n")
     try:
