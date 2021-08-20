@@ -23,14 +23,11 @@ def auto_threshold(img):
     covars = gmm.covariances_[:, 0, 0]
     _, i1, i2 = np.argsort(means)
 
-    def fromlog(a):
-        return np.round(np.exp(a)).astype(int)
-
     vmin, vmax = means[[i1, i2]] + covars[[i1, i2]] ** 0.5 * 2
     if vmin >= means[i2]:
         vmin = means[i2] + covars[i2] ** 0.5 * -1
-    vmin = int(max(fromlog(vmin), img.min()))
-    vmax = int(min(fromlog(vmax), img.max()))
+    vmin = max(np.exp(vmin), img.min(), 0)
+    vmax = min(np.exp(vmax), img.max())
 
     return vmin, vmax
 
@@ -45,10 +42,9 @@ def main():
 
     path = sys.argv[1]
 
-    sys.stderr.write(f"opening image: {path}\n")
+    print(f"opening image: {path}", file=sys.stderr)
     tiff = tifffile.TiffFile(path)
     ndim = tiff.series[0].ndim
-    dtype = tiff.series[0].dtype
     if ndim == 2:
         # FIXME This can be handled easily (promote to 3D array), we just need a
         # test file to make sure we're doing it right.
@@ -57,16 +53,15 @@ def main():
         pass
     else:
         raise Exception(f"Can't handle {ndim}-dimensional images")
-    if not np.issubdtype(dtype, np.unsignedinteger):
-        raise Exception(f"Can't handle {dtype} pixel type")
     # Get smallest pyramid level that's at least 200 in both dimensions.
     level_series = next(
         level for level in reversed(tiff.series[0].levels)
         if all(d >= 200 for d in level.shape[1:])
     )
     zarray = zarr.open(level_series.aszarr())
+    signed = not np.issubdtype(zarray.dtype, np.unsignedinteger)
 
-    sys.stderr.write(f"reading metadata\n")
+    print(f"reading metadata", file=sys.stderr)
     try:
         ome = ome_types.from_xml(tiff.pages[0].tags[270].value)
         channel_names = [c.name for c in ome.images[0].pixels.channels]
@@ -88,17 +83,21 @@ def main():
 
     color_cycle = 'ffffff', 'ff0000', '00ff00', '0000ff'
 
-    imax = np.iinfo(zarray.dtype).max
+    scale = np.iinfo(zarray.dtype).max if np.issubdtype(zarray.dtype, np.integer) else 1
     for gi, idx_start in enumerate(range(0, zarray.shape[0], 4), 1):
         idx_end = min(idx_start + 4, zarray.shape[0])
         channel_numbers = range(idx_start, idx_end)
         channel_defs = []
         for ci, color in zip(channel_numbers, color_cycle):
-            sys.stderr.write(f"analyzing channel {ci + 1}/{zarray.shape[0]}\n")
+            print(
+                f"analyzing channel {ci + 1}/{zarray.shape[0]}", file=sys.stderr
+            )
             img = zarray[ci]
+            if signed and img.min() < 0:
+                print("  WARNING: Ignoring negative pixel values", file=sys.stderr)
             vmin, vmax = auto_threshold(img)
-            vmin /= imax
-            vmax /= imax
+            vmin /= scale
+            vmax /= scale
             channel_defs.append({
                 "color": color,
                 "id": ci,
