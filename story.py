@@ -64,11 +64,25 @@ def main():
     print(f"reading metadata", file=sys.stderr)
     try:
         ome = ome_types.from_xml(tiff.pages[0].tags[270].value)
-        channel_names = [c.name for c in ome.images[0].pixels.channels]
+        ome_px = ome.images[0].pixels
+        pixel_ratio = ome_px.physical_size_x_quantity / ome_px.physical_size_y_quantity
+        if not np.isclose(pixel_ratio, 1):
+            print(
+                "WARNING: Non-square pixels detected. Using only X-size to set scale bar.",
+                file=sys.stderr,
+            )
+        pixels_per_micron = 1 / ome_px.physical_size_x_quantity.to("um").magnitude
+        channel_names = [c.name for c in ome_px.channels]
         for i, n in enumerate(channel_names):
             if not n:
                 channel_names[i] = f"Channel {i + 1}"
     except:
+        print(
+            "WARNING: Could not read OME metadata. Story will use generic channel names and\n"
+            "    the scale bar will be omitted.",
+            file=sys.stderr,
+        )
+        pixels_per_micron = None
         channel_names = [f"Channel {i + 1}" for i in range(zarray.shape[0])]
 
     story = {
@@ -76,6 +90,7 @@ def main():
             "name": "",
             "rotation": 0,
             "text": "",
+            "pixels_per_micron": pixels_per_micron,
         },
         "groups": [],
         "waypoints": [],
