@@ -117,7 +117,16 @@ def main():
             img = zarray[ci]
             if signed and img.min() < 0:
                 print("  WARNING: Ignoring negative pixel values", file=sys.stderr)
-            vmin, vmax = auto_threshold(img)
+            try:
+                vmin, vmax = auto_threshold(img)
+            except:
+                print("Auto threshold failed. Using original min and 90th percentile")
+                vmin = img.min()
+                vmax = np.quantile(img, 0.9)
+                if vmax == 0:
+                    vmax = 1
+                    
+
             vmin /= scale
             vmax /= scale
             channel_defs.append({
