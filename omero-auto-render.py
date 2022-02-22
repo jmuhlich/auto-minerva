@@ -23,24 +23,29 @@
 Set rendering settings using a Gaussian Mixture Model
 """
 
-import traceback
-from omero.gateway import BlitzGateway
-from omero.rtypes import rlong, rstring
-from omero.model import enums as omero_enums
-import omero.util.script_utils as script_utils
-import omero.scripts as scripts
+import itertools
 import numpy as np
+from omero.gateway import BlitzGateway
+from omero.model import enums as omero_enums
+from omero.rtypes import rlong, rstring
+import omero.scripts as scripts
+import omero.util.script_utils as script_utils
+import scipy.stats
+import sklearn.mixture
 import threadpoolctl
+import traceback
 
+
+# Apparently the pixel API we will use always returns pixel data as big-endian.
 PIXEL_TYPES = {
-    omero_enums.PixelsTypeint8: np.int8,
-    omero_enums.PixelsTypeuint8: np.uint8,
-    omero_enums.PixelsTypeint16: np.int16,
-    omero_enums.PixelsTypeuint16: np.uint16,
-    omero_enums.PixelsTypeint32: np.int32,
-    omero_enums.PixelsTypeuint32: np.uint32,
-    omero_enums.PixelsTypefloat: np.float32,
-    omero_enums.PixelsTypedouble: np.float64,
+    omero_enums.PixelsTypeint8: 'i1',
+    omero_enums.PixelsTypeuint8: 'u1',
+    omero_enums.PixelsTypeint16: '>i2',
+    omero_enums.PixelsTypeuint16: '>u2',
+    omero_enums.PixelsTypeint32: '>i4',
+    omero_enums.PixelsTypeuint32: '>u4',
+    omero_enums.PixelsTypefloat: '>f4',
+    omero_enums.PixelsTypedouble: '>f8',
 }
 
 
@@ -74,20 +79,13 @@ def auto_threshold(img):
     return vmin, vmax
 
 
-def threshold_channel(pix, w, h, c):
-    buf = pix.getTile(0, c, 0, 0, 0, w, h)
-    img = np.frombuffer(buf, dtype=dtype)
-    img = tile.reshape((h, w))
-    return auth_threshold(img)
-
-
 def process_image(omero_image):
 
+    channels = omero_image.getChannels()
     pixels = omero_image.getPrimaryPixels()
-    size_c = omero_image.getSizeC()
     pixels_type = pixels.getPixelsType().value
     try:
-        dtype = PIXEL_TYPES[pixels_type]
+        dtype = np.dtype(PIXEL_TYPES[pixels_type])
     except KeyError:
         raise Exception(f"Can't handle PixelsType: {pixels_type}") from None
     signed = not np.issubdtype(dtype, np.unsignedinteger)
@@ -98,28 +96,49 @@ def process_image(omero_image):
     try:
         pix.setPixelsId(pid, False)
 
-        # Get smallest pyramid level that's at least 200 in both dimensions,
-        # or largest level if none.
-        levels = [
-            (i, (s.sizeX, s.sizeY))
-            for i, s in enumerate(pix.getResolutionDescriptions())
+        # Get smallest resolution that's at least 200 in both dimensions, or
+        # the largest level if all resolutions are smaller than 200.
+        resolutions = [
+            (i, (desc.sizeX, desc.sizeY))
+            for i, desc in enumerate(pix.getResolutionDescriptions(), 1)
         ]
-        print(levels)
+        print("Image resolutions:")
+        for i, shape in resolutions:
+            print(f"    {i}: {shape[0]} x {shape[1]}")
         try:
-            level = next(
-                i for i, shape in levels if all(s >= 200 for s in shape)
+            level, (w, h) = next(
+                (i, shape)
+                for i, shape in reversed(resolutions)
+                if all(s >= 200 for s in shape)
             )
         except StopIteration:
-            level = len(shapes) - 1
-        w, h = shapes[level]
-        print(f"level={level}/{len(shapes)} shape=({w} x {h})")
+            level, (w, h) = resolutions[0]
+        print(f"Using level {level} ({w} x {h})")
+        # It appears that setResolutionLevel numbers the levels in the opposite
+        # order as getResolutionDescriptions.
+        pix.setResolutionLevel(len(resolutions) - level)
 
-        pix.setResolutionLevel(level)
-        thresholds = [threshold_channel(pix, w, h, c) for c in range(size_c)]
+        print("Auto-detecting limits for all channels:")
+        windows = []
+        active = []
+        for c, channel in enumerate(channels):
+            buf = pix.getPlane(0, c, 0)
+            img = np.frombuffer(buf, dtype=dtype)
+            img = img.reshape((h, w))
+            vmin, vmax = auto_threshold(img)
+            if np.issubdtype(dtype, np.integer):
+                vmin = round(vmin)
+                vmax = round(vmax)
+            print(f"    {c + 1}: {vmin:g} - {vmax:g}")
+            windows.append((vmin, vmax))
+            if channel.isActive():
+                active.append(c + 1)
+        omero_image.setActiveChannels(range(1, len(channels) + 1), windows=windows)
+        omero_image.setActiveChannels(active)
+        omero_image.saveDefaults()
+
     finally:
         pix.close()
-
-    print(thresholds)
 
 
 if __name__ == "__main__":
@@ -127,21 +146,22 @@ if __name__ == "__main__":
     dataTypes = [rstring('Image')]
 
     client = scripts.client(
-        'Example.py', """This script ...""",
+        "Auto-render",
+        """Computes image rendering settings using a Gaussian Mixture Model.""",
 
         scripts.String(
             "Data_Type", optional=False, grouping="1",
-            description="Choose source of images (only Image supported)",
-            values=dataTypes, default="Image"),
-
+            description="Choose specific Images or an entire Dataset",
+            values=[rstring('Image'), rstring('Dataset')], default="Image",
+        ),
         scripts.List(
             "IDs", optional=False, grouping="2",
-            description="List of Image IDs to process.").ofType(rlong(0)),
-
+            description="List of Image or Dataset IDs to process."
+        ).ofType(rlong(0)),
         version="0.1",
-        authors=["Author 1", "Author 2"],
-        institutions=["The OME Consortium"],
-        contact="ome-users@lists.openmicroscopy.org.uk",
+        authors=["Jeremy Muhlich"],
+        institutions=["Harvard Medical School Laboratory of Systems Pharmacology"],
+        contact="jmuhlich@gmail.com",
     )
 
     threadpoolctl.threadpool_limits(1)
@@ -150,24 +170,32 @@ if __name__ == "__main__":
         script_params = client.getInputs(unwrap=True)
         conn = BlitzGateway(client_obj=client)
 
-        images, message = script_utils.get_objects(conn, script_params)
+        objects, message = script_utils.get_objects(conn, script_params)
         if message:
             print(message)
+        if script_params["Data_Type"] == "Image":
+            images = objects
+        else:
+            images = list(
+                itertools.chain.from_iterable(
+                    dataset.listChildren() for dataset in objects
+                )
+            )
+
         num_errors = 0
-        if images:
-            for image in images:
-                if image.getSizeT() > 1 or image.getSizeZ() > 1:
-                    print(f"Image:{image.id} : Can't handle SizeT>1 or SizeZ>1 yet")
-                    num_errors += 1
-                    continue
-                print(f"Image:{image.id} : Processing...")
-                try:
-                    process_image(image)
-                except:
-                    traceback.print_exc()
-                    num_errors += 1
-                print("-" * 20)
-                print()
+        for image in images:
+            if image.getSizeT() > 1 or image.getSizeZ() > 1:
+                print(f"Image:{image.id} : Can't handle SizeT>1 or SizeZ>1 yet")
+                num_errors += 1
+                continue
+            print()
+            print(f"Processing Image:{image.id}")
+            try:
+                process_image(image)
+            except:
+                traceback.print_exc()
+                num_errors += 1
+            print("-" * 20)
         num_successes = len(images) - num_errors
         message = f"Success: {num_successes} / Failure: {num_errors}" if num_errors else "Success"
         client.setOutput("Message", rstring(message))
