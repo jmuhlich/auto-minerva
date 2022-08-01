@@ -19,7 +19,7 @@ zarray = zarr.open(tiff.series[0].aszarr())
 if isinstance(zarray, zarr.Group):
     zarray = zarray[0]
 if zarray.ndim == 2:
-    img = zarray
+    img = zarray[...]
 elif zarray.ndim == 3:
     img = zarray[channel]
 else:
