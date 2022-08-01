@@ -40,9 +40,12 @@ img_log = np.log(img_s[img_s > 0])
 gmm = sklearn.mixture.GaussianMixture(3, max_iter=1000, tol=1e-6)
 gmm.fit(img_log.reshape((-1,1)))
 means = gmm.means_[:, 0]
-_, i1, i2 = np.argsort(means)
-mean1, mean2 = means[[i1, i2]]
-std1, std2 = gmm.covariances_[[i1, i2], 0, 0] ** 0.5
+morder = _, i1, i2 = np.argsort(means)
+means = means[morder]
+covars = gmm.covariances_[morder, 0, 0]
+stds = covars ** 0.5
+_, mean1, mean2 = means
+_, std1, std2 = stds
 
 x = np.linspace(mean1, mean2, 50)
 y1 = scipy.stats.norm(mean1, std1).pdf(x) * gmm.weights_[i1]
@@ -57,12 +60,18 @@ vmax = min(np.exp(lmax), img_s.max())
 
 print((vmin, vmax))
 
+masks = (img[..., None] >= np.exp(means - stds)) & (img[..., None] <= np.exp(means + stds))
+masks = np.transpose(masks, (2, 0, 1))
+
 viewer = napari.Viewer()
 viewer.add_image(img, contrast_limits=[vmin, vmax], name=f"{channel_name} - fit")
 viewer.add_image(img, contrast_limits=[img.min(), img.max()], name=f"{channel_name} - full")
-viewer.add_image(img < vmin, colormap="red", opacity=0.3, visible=False, name="background")
-viewer.add_image((img >= vmin) & (img <= vmax), colormap="cyan", opacity=0.3, visible=False, name="foreground")
-viewer.add_image(img > vmax, colormap="magenta", opacity=0.3, visible=False, name="saturated")
+viewer.add_image(img < vmin, colormap="red", blending="additive", visible=False, name="background")
+viewer.add_image((img >= vmin) & (img <= vmax), colormap="cyan", blending="additive", visible=False, name="foreground")
+viewer.add_image(img > vmax, colormap="magenta", blending="additive", visible=False, name="saturated")
+viewer.add_image(masks[0], colormap="bop blue", blending="additive", opacity=0.5, visible=False, name="mode 1")
+viewer.add_image(masks[1], colormap="bop orange", blending="additive", opacity=0.5, visible=False, name="mode 2")
+viewer.add_image(masks[2], colormap="green", blending="additive", opacity=0.5, visible=False, name="mode 3")
 
 def reset_gamma():
     for l in viewer.layers:
