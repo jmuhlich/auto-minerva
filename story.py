@@ -120,9 +120,10 @@ def main():
             try:
                 vmin, vmax = auto_threshold(img)
             except:
-                #print("Auto threshold failed. Using original min and 90th percentile")
+                print("Auto threshold failed. Using original min and max")
                 vmin = img.min()
-                vmax = np.quantile(img, 0.9)
+                vmax = img.max()
+                #vmax = np.quantile(img, 0.9)
                 if vmax == 0:
                     vmax = 1
                     
