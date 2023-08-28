@@ -129,6 +129,7 @@ def main():
             })
         story["groups"].append({
             "label": f"Group {gi}",
+            "render": channel_defs,
             "channels": channel_defs,
         })
 
